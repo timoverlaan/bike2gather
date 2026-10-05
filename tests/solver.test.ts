@@ -260,3 +260,47 @@ describe('route joining', () => {
     expect(commonPrefixLength([north, [[52, 5], [52.005, 5]]])).toBeLessThan(30);
   });
 });
+
+describe('opening hours', () => {
+  const at = (h: number, m = 0) => h * 60 + m;
+
+  it('parses common patterns', async () => {
+    const { openOnWorkdays } = await import('../src/solver/hours');
+    expect(openOnWorkdays('Mo-Fr 07:30-18:00; Sa 09:00-17:00; Su off', at(8))).toEqual([true, true, true, true, true]);
+    expect(openOnWorkdays('Mo-Fr 07:30-18:00', at(7, 15))).toEqual([false, false, false, false, false]);
+    expect(openOnWorkdays('24/7', at(3))).toEqual([true, true, true, true, true]);
+    expect(openOnWorkdays('Tu-Sa 08:00-17:00', at(9))).toEqual([false, true, true, true, true]);
+    expect(openOnWorkdays('Mo,We,Fr 08:00-12:00,13:00-17:00', at(12, 30))).toEqual([false, false, false, false, false]);
+    expect(openOnWorkdays('Mo,We,Fr 08:00-12:00,13:00-17:00', at(13, 30))).toEqual([true, false, true, false, true]);
+    // later rule overrides; PH rules are ignored
+    expect(openOnWorkdays('Mo-Fr 08:00-18:00; We off; PH off', at(9))).toEqual([true, true, false, true, true]);
+    // comma-separated extra rule
+    expect(openOnWorkdays('Mo-Th 08:00-17:00, Fr 08:00-12:00', at(14))).toEqual([true, true, true, true, false]);
+    // past midnight: Thursday night bar still open at 01:00 on Friday
+    expect(openOnWorkdays('Th 20:00-02:00', at(1))).toEqual([false, false, false, false, true]);
+    expect(openOnWorkdays('Mo-Su 08:00+', at(22))).toEqual([true, true, true, true, true]);
+  });
+
+  it('returns null for unsupported or missing values', async () => {
+    const { openOnWorkdays } = await import('../src/solver/hours');
+    expect(openOnWorkdays('Jan-Mar Mo-Fr 08:00-17:00', at(9))).toBeNull();
+    expect(openOnWorkdays('sunrise-sunset', at(9))).toBeNull();
+    expect(openOnWorkdays(undefined, at(9))).toBeNull();
+  });
+
+  it('a café that is closed at meetup time loses its spot bonus', () => {
+    const people = [person('a', 52.1, 5.0), person('b', 52.1, 5.2)];
+    const s = settings({ time: '08:00', weights: { fairness: 0.5, together: 0, spot: 1, green: 0, fitness: 0 } });
+    const base = { dist: { personLeg: [2000, 2000], shared: 4000, estimated: false }, direct: [5500, 5500], people, settings: s };
+    const mk = (hours?: string) =>
+      evaluate({ ...base, candidate: { id: 'c', lat: 52.1, lon: 5.1, type: 'cafe', name: 'X', hours } });
+    const open = mk('Mo-Fr 07:00-18:00');
+    const closed = mk('Mo-Fr 10:00-18:00');
+    const unknown = mk();
+    expect(open.openWorkdays).toEqual([true, true, true, true, true]);
+    expect(closed.score.spotBonus).toBe(0);
+    expect(open.score.spotBonus).toBeGreaterThan(unknown.score.spotBonus);
+    expect(unknown.score.spotBonus).toBeGreaterThan(0);
+    expect(classify({ amenity: 'pub' })).toBe('cafe');
+  });
+});

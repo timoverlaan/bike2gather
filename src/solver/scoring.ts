@@ -8,6 +8,7 @@ import type {
   Weights,
 } from '../types';
 import { SPOT_QUALITY } from '../types';
+import { openOnWorkdays } from './hours';
 
 /**
  * All score terms are expressed in "kilometres of detour" so the sliders trade off
@@ -24,6 +25,8 @@ import { SPOT_QUALITY } from '../types';
 export const TOGETHER_KM = 8;
 export const SPOT_KM = 1.5;
 export const GREEN_KM = 3;
+/** Spot bonus multiplier for cafés etc. whose opening hours are unknown. */
+export const UNKNOWN_HOURS_FACTOR = 0.8;
 /** Penalty per km above someone's personal maximum detour. */
 export const LIMIT_PENALTY_KM = 10;
 
@@ -103,7 +106,15 @@ export function evaluate(input: ScoreInput): Evaluation {
 
   const meanDirectKm = Math.max(0.5, results.reduce((a, r) => a + r.directKm, 0) / Math.max(1, results.length));
   const togetherBonus = TOGETHER_KM * w.together * Math.min(1, sharedKm / meanDirectKm);
-  const spotBonus = SPOT_KM * w.spot * SPOT_QUALITY[candidate.type];
+  // Places you wait inside only count as nice when they're open at the meetup time.
+  const hasHours = candidate.type === 'cafe' || candidate.type === 'bikeshop';
+  const openWorkdays = hasHours ? openOnWorkdays(candidate.hours, meetTime) : null;
+  const openFactor = !hasHours
+    ? 1
+    : openWorkdays
+      ? openWorkdays.filter(Boolean).length / openWorkdays.length
+      : UNKNOWN_HOURS_FACTOR;
+  const spotBonus = SPOT_KM * w.spot * SPOT_QUALITY[candidate.type] * openFactor;
   const greenFrac = input.green ? input.green.overall : null;
   const greenBonus = greenFrac == null ? 0 : GREEN_KM * w.green * greenFrac;
 
@@ -113,6 +124,7 @@ export function evaluate(input: ScoreInput): Evaluation {
     sharedKm,
     meetTime,
     green: greenFrac,
+    openWorkdays,
     estimated: dist.estimated,
     score: {
       effort,

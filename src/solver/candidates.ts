@@ -16,7 +16,15 @@ export interface OsmElement {
 
 export function classify(tags: Record<string, string>): SpotType | null {
   const { amenity, shop, leisure, place, railway, tourism, historic, man_made } = tags;
-  if (amenity === 'cafe' || amenity === 'ice_cream' || shop === 'bakery' || shop === 'coffee') return 'cafe';
+  if (
+    amenity === 'cafe' ||
+    amenity === 'ice_cream' ||
+    amenity === 'bar' ||
+    amenity === 'pub' ||
+    shop === 'bakery' ||
+    shop === 'coffee'
+  )
+    return 'cafe';
   if (leisure === 'park') return 'park';
   if (place === 'square') return 'square';
   if (railway === 'station' || railway === 'halt') return 'station';
@@ -38,7 +46,7 @@ export function poiQuery(b: BBox): string {
   const bb = `${b.south.toFixed(5)},${b.west.toFixed(5)},${b.north.toFixed(5)},${b.east.toFixed(5)}`;
   return `[out:json][timeout:25];
 (
-  node["amenity"~"^(cafe|ice_cream|fountain)$"](${bb});
+  node["amenity"~"^(cafe|ice_cream|bar|pub|fountain)$"](${bb});
   node["shop"~"^(bakery|coffee|bicycle)$"](${bb});
   nwr["leisure"="park"]["name"](${bb});
   nwr["place"="square"](${bb});
@@ -57,7 +65,9 @@ export function poisToCandidates(elements: OsmElement[]): Candidate[] {
     if (!pos || !el.tags) continue;
     const type = classify(el.tags);
     if (!type) continue;
-    out.push({ id: `${el.type[0]}${el.id}`, lat: pos.lat, lon: pos.lon, type, name: el.tags.name ?? null });
+    const c: Candidate = { id: `${el.type[0]}${el.id}`, lat: pos.lat, lon: pos.lon, type, name: el.tags.name ?? null };
+    if (el.tags.opening_hours) c.hours = el.tags.opening_hours;
+    out.push(c);
   }
   return out;
 }

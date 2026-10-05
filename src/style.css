@@ -611,6 +611,27 @@ input[type='range'] {
   background: #d98a00;
   color: #fff;
 }
+.hours {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+}
+.hours.ok {
+  color: var(--accent);
+}
+.hours.bad {
+  color: var(--bad);
+}
+.hours.some {
+  color: var(--warn-ink);
+}
+.hours.unknown {
+  color: var(--muted);
+}
+.hours .raw {
+  display: block;
+  color: var(--muted);
+  font-size: 0.95em;
+}
 .tag {
   font-size: 0.72rem;
   font-weight: 700;

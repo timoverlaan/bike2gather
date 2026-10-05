@@ -204,6 +204,23 @@ function personLine(e: Evaluation, i: number) {
     <span class="who">${esc(riderName(p, idx))}</span><span class="what">${bits.join(' · ')}</span></li>`;
 }
 
+/** Opening-hours line for cafés etc.: open at the meetup time on workdays? */
+function hoursLine(e: Evaluation) {
+  const c = e.candidate;
+  if (c.type !== 'cafe' && c.type !== 'bikeshop') return '';
+  const time = formatTime(e.meetTime);
+  const raw = c.hours ? `<span class="raw">${esc(t('hoursRaw', { h: c.hours }))}</span>` : '';
+  const open = e.openWorkdays;
+  if (!open) return `<p class="hours unknown">🕒 ${esc(c.hours ? t('hoursRaw', { h: c.hours }) : t('hoursUnknown'))}</p>`;
+  const n = open.filter(Boolean).length;
+  if (n === open.length) return `<p class="hours ok">🕒 ${esc(t('openAll', { t: time }))}${raw}</p>`;
+  if (n === 0) return `<p class="hours bad">🕒 ${esc(t('closedAll', { t: time }))}${raw}</p>`;
+  // 1 Jan 2024 was a Monday.
+  const fmt = new Intl.DateTimeFormat(state.lang === 'nl' ? 'nl-NL' : 'en-GB', { weekday: 'short' });
+  const days = open.flatMap((o, d) => (o ? [fmt.format(new Date(2024, 0, 1 + d))] : [])).join(', ');
+  return `<p class="hours some">🕒 ${esc(t('openSome', { t: time, days }))}${raw}</p>`;
+}
+
 function optionCard(e: Evaluation, i: number) {
   const c = e.candidate;
   const morning = state.settings.mode === 'morning';
@@ -224,6 +241,7 @@ function optionCard(e: Evaluation, i: number) {
       <div class="titles">
         <h3>${esc(title)}</h3>
         <p class="meta">${meta.join(' · ')}</p>
+        ${hoursLine(e)}
       </div>
       ${i === 0 && !c.custom ? `<span class="tag">${esc(t('best'))}</span>` : ''}
       ${c.custom ? `<span class="tag alt">${esc(t('custom'))}</span>` : ''}

@@ -30,7 +30,7 @@ tangible. Lower total is better:
 | --- | --- |
 | **Fairness** | `(1−f)·mean(detour) + f·max(detour)`: from *least total km for the group* to *equal detours for everyone*. |
 | **Time together** | Bonus for kilometres ridden together, relative to the average commute (meet earlier, split later). |
-| **Nice meetup spot** | Bonus for waiting at a café/bakery, park, landmark/windmill, square, station or bike shop instead of a street corner. |
+| **Nice meetup spot** | Bonus for waiting at a café/bakery, park, landmark/windmill, square, station or bike shop instead of a street corner. Cafés, bakeries, bars and bike shops only get the bonus when OpenStreetMap opening hours say they're open at the meetup time on workdays; unknown hours count for 80 %. |
 | **Green & scenic** | Bonus for the share of the route through or along parks, woods, grass, fields, water, canals and tree rows. |
 | **Fitter riders go further** | Each person's detour is multiplied by `2^(s·(3−fitness)/2)`. With fitness 5 a detour "costs" less, so fit riders take the longer leg. |
 

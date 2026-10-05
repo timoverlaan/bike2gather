@@ -69,6 +69,8 @@ export interface Candidate extends LatLon {
   type: SpotType;
   name: string | null;
   custom?: boolean;
+  /** Raw OSM opening_hours value, if known. */
+  hours?: string;
 }
 
 /** Network distances (metres) for one candidate. */
@@ -119,4 +121,6 @@ export interface Evaluation {
   green: number | null;
   score: ScoreBreakdown;
   estimated: boolean;
+  /** Open at the meetup time on Mon–Fri, for places with opening hours; null = unknown / n.a. */
+  openWorkdays: boolean[] | null;
 }
