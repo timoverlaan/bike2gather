@@ -9,7 +9,7 @@ const BASE = 'https://routing.openstreetmap.de/routed-bike';
 /** Max coordinates per table request on the public server. */
 export const TABLE_LIMIT = 100;
 
-const throttle = limiter(2, 250);
+const throttle = limiter(2, 250, 'osrm');
 
 const fmt = (pts: LatLon[]) => pts.map((p) => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
 

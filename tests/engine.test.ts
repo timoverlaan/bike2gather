@@ -133,6 +133,37 @@ describe('Engine', () => {
     expect(best.people.every((p) => p.homeTime > best.meetTime)).toBe(true);
   });
 
+  it('does not wait for a slow greenery query', async () => {
+    const base = fakeFetch(calls);
+    let releaseGreen: (() => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const q = init?.body instanceof URLSearchParams ? String(init.body.get('data')) : '';
+        if (q.includes('out geom')) await new Promise<void>((r) => (releaseGreen = r)); // hangs until released
+        return base(input, init);
+      }),
+    );
+    const state = defaultState('en');
+    state.settings.destination = { lat: 52.1, lon: 5.08, label: 'Work' };
+    const engine = new Engine();
+    engine.greenWaitMs = 100;
+    let updated = false;
+    engine.onBackgroundUpdate = () => (updated = true);
+
+    const r = await engine.solve(people, state.settings, () => {});
+    expect(r.options.length).toBeGreaterThan(0);
+    expect(r.options.every((o) => o.green == null)).toBe(true);
+    expect(engine.greenPending).toBe(true);
+
+    // The Overpass client spaces requests out, so wait until the greenery request is really in flight.
+    await vi.waitFor(() => expect(releaseGreen).not.toBeNull());
+    releaseGreen!();
+    await vi.waitFor(() => expect(updated).toBe(true));
+    expect(engine.greenPending).toBe(false);
+    expect(engine.rescore(state.settings).options.every((o) => o.green != null)).toBe(true);
+  });
+
   it('evaluates a custom spot', async () => {
     const state = defaultState('en');
     state.settings.destination = { lat: 52.1, lon: 5.08, label: 'Work' };

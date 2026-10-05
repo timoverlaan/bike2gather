@@ -2,7 +2,7 @@ import type { Candidate, CandidateDistances, Evaluation, LatLon, Leg, Person, Se
 import { route, table, TABLE_LIMIT } from '../services/osrm';
 import { overpass } from '../services/overpass';
 import { reverseGeocode } from '../services/pdok';
-import { key } from '../services/http';
+import { key, sleep } from '../services/http';
 import {
   DETOUR_FACTOR,
   gridCandidates,
@@ -15,6 +15,9 @@ import {
 import { haversine } from './geo';
 import { greenFraction, greenQuery, parseGreen } from './greenery';
 import { evaluate, pickDiverse } from './scoring';
+import { log, warn } from '../log';
+
+const since = (t: number) => `${Math.round(performance.now() - t)}ms`;
 
 export type Progress = (stage: 'pois' | 'matrix' | 'routes' | 'green' | 'done', detail?: string) => void;
 
@@ -48,6 +51,16 @@ export class Engine {
   private dest: LatLon | null = null;
   private mode: Settings['mode'] = 'morning';
   warnings: string[] = [];
+  /** How long a search waits for greenery before showing results without it. */
+  greenWaitMs = 10000;
+  /** Called when greenery that arrived after the results were shown is ready (re-rank). */
+  onBackgroundUpdate: (() => void) | null = null;
+  private greenInFlight = new Set<Leg>();
+
+  /** True while greenery is still being fetched in the background. */
+  get greenPending() {
+    return this.greenInFlight.size > 0;
+  }
 
   get hasProblem() {
     return this.candidates.length > 0;
@@ -81,30 +94,46 @@ export class Engine {
     this.dist.clear();
     this.detailed.clear();
 
+    log('engine', 'solve start', { mode: settings.mode, riders: people.length, options: settings.options, weights: settings.weights });
+
     // 1. Candidate spots: OSM POIs plus a grid of generic points.
     progress('pois');
+    let t = performance.now();
     const area = searchArea(homes, dest);
     const areaKey = JSON.stringify(area);
+    log('engine', 'search area (km)', {
+      ns: +((haversine({ lat: area.south, lon: area.west }, { lat: area.north, lon: area.west }) / 1000).toFixed(1)),
+      ew: +((haversine({ lat: area.south, lon: area.west }, { lat: area.south, lon: area.east }) / 1000).toFixed(1)),
+    });
     let pois = this.poiCache.get(areaKey);
     if (!pois) {
       try {
         const data = await overpass<{ elements: OsmElement[] }>(poiQuery(area));
         pois = poisToCandidates(data.elements);
         this.poiCache.set(areaKey, pois);
-      } catch {
+        log('engine', `POIs: ${data.elements.length} elements → ${pois.length} spots in ${since(t)}`);
+      } catch (e) {
+        warn('engine', `POI query failed after ${since(t)}`, e);
         this.warnings.push('warnPois');
         pois = [];
       }
-    }
+    } else log('engine', `POIs from cache: ${pois.length}`);
+    t = performance.now();
     const pool = [...pois, ...gridCandidates(area)];
     const limit = Math.min(85, TABLE_LIMIT - 1 - people.length);
     this.candidates = [...custom, ...prefilter(pool, people, dest, settings, limit - custom.length)];
+    log('engine', `prefilter: ${pool.length} → ${this.candidates.length} candidates in ${since(t)}`);
 
     // 2. Bicycle distance matrix for all candidates.
     progress('matrix');
+    t = performance.now();
     try {
       await this.computeMatrix(homes, dest);
-    } catch {
+      log('engine', `matrix: ${this.dist.size}/${this.candidates.length} reachable in ${since(t)}`, {
+        directKm: this.direct.map((d) => +(d / 1000).toFixed(1)),
+      });
+    } catch (e) {
+      warn('engine', `matrix failed after ${since(t)}, using estimates`, e);
       this.warnings.push('warnMatrix');
       this.estimateMatrix(homes, dest);
     }
@@ -171,6 +200,7 @@ export class Engine {
       // Custom spots are always shown, even when they don't make the top list.
       for (const e of all) if (e.candidate.custom && !options.includes(e)) options.push(e);
       const missing = options.filter((o) => !this.detailed.has(o.candidate.id));
+      log('engine', `refine round ${round + 1}: ${all.length} scored, ${options.length} options, ${missing.length} need detail`);
       if (!missing.length) break;
       await this.detail(missing.map((m) => m.candidate), progress);
     }
@@ -179,7 +209,10 @@ export class Engine {
       this.detailed.has(o.candidate.id),
     );
     for (const e of all) if (e.candidate.custom && !options.includes(e)) options.push(e);
+    let t = performance.now();
     await this.nameOptions(options);
+    log('engine', `named options in ${since(t)}`);
+    log('engine', 'done', options.map((o) => ({ name: o.candidate.name, type: o.candidate.type, score: +o.score.total.toFixed(2) })));
     progress('done');
     return { options, all, legs: this.detailed, warnings: [...this.warnings] };
   }
@@ -202,13 +235,15 @@ export class Engine {
       const d = this.dist.get(c.id);
       if (!d) continue;
       if (!c.custom && !settings.spotTypes[c.type]) continue;
-      const green = this.greenOf(c.id) ?? {
-        perPerson: this.people.map(() => avgGreen),
-        overall: avgGreen,
-      };
-      out.push(
-        evaluate({ candidate: c, dist: d, direct: this.direct, people: this.people, settings, green }),
-      );
+      const measured = this.greenOf(c.id);
+      const green = measured ?? { perPerson: this.people.map(() => avgGreen), overall: avgGreen };
+      const e = evaluate({ candidate: c, dist: d, direct: this.direct, people: this.people, settings, green });
+      if (!measured) {
+        // The estimate only steers the ranking; don't present it as a measurement.
+        e.green = null;
+        e.people.forEach((p) => (p.green = null));
+      }
+      out.push(e);
     }
     return out;
   }
@@ -229,6 +264,8 @@ export class Engine {
     const dest = this.dest!;
     const morning = this.mode === 'morning';
     progress('routes', `${cands.length}`);
+    let t = performance.now();
+    log('engine', `detail: routing ${cands.length} candidates × ${homes.length + 1} legs`);
 
     const legFor = async (from: LatLon, to: LatLon): Promise<Leg> => {
       const k = `${key(from.lat, from.lon)}>${key(to.lat, to.lon)}`;
@@ -252,12 +289,14 @@ export class Engine {
             shared: shared.distance,
             estimated: false,
           });
-        } catch {
+        } catch (e) {
+          warn('engine', `routing failed for ${c.id}, dropping it`, e);
           this.dist.delete(c.id); // can't route there – drop it
           if (!this.warnings.includes('warnRoute')) this.warnings.push('warnRoute');
         }
       }),
     );
+    log('engine', `routes done in ${since(t)}`);
     if (this.directEstimated) {
       // Matrix failed earlier: get real direct distances too.
       const estimates = this.direct;
@@ -269,20 +308,43 @@ export class Engine {
       this.directEstimated = false;
     }
 
-    // Greenery for all legs we don't have yet, in one Overpass query.
+    // Greenery for all legs we don't have yet, in one Overpass query. Results don't wait
+    // for it longer than greenWaitMs; late greenery triggers onBackgroundUpdate.
     const pending = [...new Set(cands.flatMap((c) => {
       const d = this.detailed.get(c.id);
       return d ? [...d.person, d.shared] : [];
-    }))].filter((l) => l.green == null && l.coords.length > 1);
+    }))].filter((l) => l.green == null && l.coords.length > 1 && !this.greenInFlight.has(l));
     if (!pending.length) return;
     progress('green');
+    const task = this.computeGreen(pending, dest);
+    const inTime = await Promise.race([task.then(() => true), sleep(this.greenWaitMs).then(() => false)]);
+    if (!inTime) {
+      warn('engine', `greenery not ready after ${this.greenWaitMs}ms; showing results now, will re-rank when it arrives`);
+      void task.then(() => this.onBackgroundUpdate?.());
+    }
+  }
+
+  private async computeGreen(legs: Leg[], dest: LatLon) {
+    legs.forEach((l) => this.greenInFlight.add(l));
+    let t = performance.now();
+    log('engine', `greenery: ${legs.length} legs, ${legs.reduce((a, l) => a + l.coords.length, 0)} route points`);
     try {
-      const data = await overpass<{ elements: never[] }>(greenQuery(pending.map((l) => l.coords)));
+      const data = await overpass<{ elements: never[] }>(greenQuery(legs.map((l) => l.coords)));
+      log('engine', `greenery: ${data.elements.length} OSM features in ${since(t)}`);
+      t = performance.now();
       const features = parseGreen(data.elements, dest.lat);
-      for (const l of pending) l.green = greenFraction(l.coords, features);
-    } catch {
+      for (const l of legs) l.green = greenFraction(l.coords, features);
+      log('engine', `greenery computed in ${since(t)}`, {
+        rings: features.rings.length,
+        lines: features.lines.length,
+        green: legs.map((l) => +(l.green ?? 0).toFixed(2)),
+      });
+    } catch (e) {
+      warn('engine', `greenery failed after ${since(t)}`, e);
       if (!this.warnings.includes('warnGreen')) this.warnings.push('warnGreen');
-      for (const l of pending) l.green = 0;
+      for (const l of legs) l.green = 0;
+    } finally {
+      legs.forEach((l) => this.greenInFlight.delete(l));
     }
   }
 

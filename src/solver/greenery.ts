@@ -8,25 +8,31 @@ import { pointInRing, pointSegDist, projector, samplePolyline, simplify } from '
 export const SAMPLE_STEP = 40;
 export const EDGE_DIST = 20;
 
-const AREA_VALUES =
-  'forest|wood|grass|meadow|park|scrub|heath|nature_reserve|garden|recreation_ground|village_green|farmland|orchard|wetland|water|allotments|cemetery|common';
+/**
+ * Tag filters per key. Exact keys with a value regex are much cheaper for Overpass
+ * than a regex on the key itself.
+ */
+const WAY_FILTERS = [
+  '["landuse"~"^(forest|grass|meadow|farmland|orchard|allotments|cemetery|village_green|recreation_ground)$"]',
+  '["leisure"~"^(park|garden|nature_reserve|common)$"]',
+  '["natural"~"^(wood|scrub|heath|wetland|water|tree_row)$"]',
+  '["waterway"~"^(river|canal)$"]',
+];
+const REL_FILTERS = ['["leisure"~"^(park|nature_reserve)$"]', '["natural"~"^(wood|water)$"]', '["landuse"="forest"]'];
 
 /** Overpass query for green features near the given polylines ([lat, lon]). */
-export function greenQuery(lines: [number, number][][]): string {
+export function greenQuery(lines: [number, number][][], serverTimeoutS = 25): string {
   const parts: string[] = [];
   for (const line of lines) {
-    const simple = simplify(line, 25);
+    // Coarse simplification keeps the query small; EDGE_DIST still catches features along the way.
+    const simple = simplify(line, 40);
     // Overpass `around` with a coordinate list treats it as a polyline.
     const coords = simple.map(([la, lo]) => `${la.toFixed(5)},${lo.toFixed(5)}`).join(',');
     const around = `(around:${EDGE_DIST},${coords})`;
-    parts.push(
-      `way${around}[~"^(landuse|leisure|natural)$"~"^(${AREA_VALUES})$"];`,
-      `rel${around}[~"^(landuse|leisure|natural)$"~"^(${AREA_VALUES})$"];`,
-      `way${around}["natural"="tree_row"];`,
-      `way${around}["waterway"~"^(river|canal)$"];`,
-    );
+    for (const f of WAY_FILTERS) parts.push(`way${f}${around};`);
+    for (const f of REL_FILTERS) parts.push(`rel${f}${around};`);
   }
-  return `[out:json][timeout:60];\n(\n${parts.join('\n')}\n);\nout geom;`;
+  return `[out:json][timeout:${serverTimeoutS}];\n(\n${parts.join('\n')}\n);\nout geom;`;
 }
 
 interface OverpassGeomEl {

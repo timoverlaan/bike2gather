@@ -8,6 +8,7 @@ import { $, debounce, esc } from './ui/dom';
 import { Engine, type Progress, type SolveResult } from './solver/engine';
 import { searchAddress, reverseGeocode } from './services/pdok';
 import { formatTime } from './solver/scoring';
+import { error as logError, log, pendingSummary } from './log';
 
 // ---------------------------------------------------------------- state
 
@@ -325,6 +326,7 @@ function selectOption(id: string) {
 }
 
 const progress: Progress = (stage, detail) => {
+  log('stage', stage, detail);
   const msg: Record<string, string> = {
     pois: t('stagePois'),
     matrix: t('stageMatrix'),
@@ -339,17 +341,27 @@ async function run(task: () => Promise<SolveResult>) {
   const id = ++runId;
   busy = true;
   renderSolveButton();
+  const started = performance.now();
+  log('run', `#${id} started`);
+  // Every 5 s, report what we're still waiting on.
+  const heartbeat = setInterval(() => {
+    const p = pendingSummary();
+    log('run', `#${id} still running after ${((performance.now() - started) / 1000).toFixed(0)}s; status "${$('#status').textContent}"; pending: ${p.length ? p.join(', ') : 'none (queued, sleeping between retries, or computing)'}`);
+  }, 5000);
   try {
     const r = await task();
+    log('run', `#${id} finished in ${((performance.now() - started) / 1000).toFixed(1)}s${id !== runId ? ' (superseded, ignored)' : ''}`);
     if (id !== runId) return;
     result = r;
     if (!selected || !r.options.some((o) => o.candidate.id === selected)) selected = r.options[0]?.candidate.id ?? null;
-    setStatus('');
+    setStatus(engine.greenPending ? t('stageGreen') : '');
     renderResults();
     renderMap();
   } catch (e) {
+    logError('run', `#${id} failed`, e);
     if (id === runId) setStatus(t('errorGeneric', { msg: e instanceof Error ? e.message : String(e) }), 'error');
   } finally {
+    clearInterval(heartbeat);
     if (id === runId) {
       busy = false;
       renderSolveButton();
@@ -385,6 +397,12 @@ function weightsChanged() {
   renderMap();
   refineLater();
 }
+
+engine.onBackgroundUpdate = () => {
+  log('run', 'late greenery arrived; re-ranking');
+  if (!busy) setStatus('');
+  weightsChanged();
+};
 
 function startPick(text: string, cb: (p: LatLon) => void) {
   $('#pick-text').textContent = text;
@@ -492,6 +510,10 @@ function choose(li: HTMLElement) {
 }
 
 // ---------------------------------------------------------------- events
+
+window.addEventListener('error', (e) => logError('window', 'uncaught error', e.error ?? e.message));
+window.addEventListener('unhandledrejection', (e) => logError('window', 'unhandled rejection', e.reason));
+log('app', `loaded (${state.lang}, ${state.people.length} riders, mode ${state.settings.mode})`);
 
 document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) =>
   b.addEventListener('click', () => {

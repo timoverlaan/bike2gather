@@ -36,7 +36,7 @@ export function classify(tags: Record<string, string>): SpotType | null {
 
 export function poiQuery(b: BBox): string {
   const bb = `${b.south.toFixed(5)},${b.west.toFixed(5)},${b.north.toFixed(5)},${b.east.toFixed(5)}`;
-  return `[out:json][timeout:40];
+  return `[out:json][timeout:25];
 (
   node["amenity"~"^(cafe|ice_cream|fountain)$"](${bb});
   node["shop"~"^(bakery|coffee|bicycle)$"](${bb});
