@@ -62,9 +62,8 @@ export function normalize(raw: unknown, lang: Lang): AppState {
   };
 }
 
+/** State saved on this device (share links are applied separately, see share.ts). */
 export function load(lang: Lang): AppState {
-  const fromHash = readShareHash();
-  if (fromHash) return normalize(fromHash, lang);
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return normalize(raw ? JSON.parse(raw) : null, lang);
@@ -78,35 +77,5 @@ export function save(state: AppState) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* storage unavailable (private mode) – app still works */
-  }
-}
-
-function b64encode(s: string) {
-  return btoa(String.fromCharCode(...new TextEncoder().encode(s)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-function b64decode(s: string) {
-  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
-  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
-}
-
-export function shareUrl(state: AppState): string {
-  const url = new URL(location.href);
-  url.hash = `plan=${b64encode(JSON.stringify(state))}`;
-  return url.toString();
-}
-
-function readShareHash(): unknown {
-  const m = /plan=([A-Za-z0-9_-]+)/.exec(location.hash);
-  if (!m) return null;
-  try {
-    const data = JSON.parse(b64decode(m[1]));
-    // Don't keep the plan in the address bar; the state is saved locally instead.
-    history.replaceState(null, '', location.pathname + location.search);
-    return data;
-  } catch {
-    return null;
   }
 }

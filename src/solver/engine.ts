@@ -372,6 +372,39 @@ export class Engine {
     return this.refine(settings, progress);
   }
 
+  /** Direct home ↔ destination distances (m), for share links. */
+  get directDistances(): number[] {
+    return [...this.direct];
+  }
+
+  /**
+   * Load a pre-computed result (from a share link) without any network calls.
+   * Re-weighting, re-ranking and "try my own spot" keep working afterwards.
+   */
+  hydrate(
+    people: Person[],
+    settings: Settings,
+    direct: number[],
+    options: { candidate: Candidate; legs: { person: Leg[]; shared: Leg } }[],
+  ) {
+    this.people = people;
+    this.dest = settings.destination;
+    this.mode = settings.mode;
+    this.problemKey = Engine.problemKeyOf(people, settings);
+    this.direct = [...direct];
+    this.directEstimated = false;
+    this.warnings = [];
+    this.candidates = options.map((o) => o.candidate);
+    this.dist.clear();
+    this.detailed.clear();
+    for (const { candidate: c, legs } of options) {
+      this.detailed.set(c.id, legs);
+      this.dist.set(c.id, { personLeg: legs.person.map((l) => l.distance), shared: legs.shared.distance, estimated: false });
+      if (c.name) this.names.set(c.id, c.name);
+    }
+    log('engine', `hydrated ${options.length} shared options`);
+  }
+
   removeCustom(id: string) {
     this.candidates = this.candidates.filter((c) => c.id !== id);
     this.dist.delete(id);

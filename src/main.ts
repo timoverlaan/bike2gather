@@ -2,7 +2,8 @@ import './style.css';
 import type { Evaluation, LatLon, Lang, Person, Place, SpotType, Weights } from './types';
 import { SPOT_TYPES } from './types';
 import { detectLang, num, setLang, t, type Key } from './i18n';
-import { load, newPerson, PRESETS, save, shareUrl, type AppState } from './store';
+import { load, newPerson, normalize, PRESETS, save, type AppState } from './store';
+import { buildShareUrl, packLeg, clearSharedFromUrl, decodePayload, sharedFromUrl, unpackLeg, type SharedPayload } from './share';
 import { MapView, personColor } from './ui/map';
 import { $, debounce, esc } from './ui/dom';
 import { Engine, type Progress, type SolveResult } from './solver/engine';
@@ -14,13 +15,20 @@ import { error as logError, log, pendingSummary } from './log';
 
 let state: AppState = load(detectLang());
 setLang(state.lang);
-const persist = debounce(() => save(state), 300);
+const persist = debounce(() => {
+  save(state);
+  // Once the user changes something, the address bar should no longer claim to be the shared plan.
+  clearSharedFromUrl();
+  fromLink = false;
+}, 300);
 
 const engine = new Engine();
 let result: SolveResult | null = null;
 let selected: string | null = null;
 let tab: 'route' | 'priorities' | 'results' = 'route';
 let busy = false;
+/** Results came from a share link (no live search done yet). */
+let fromLink = false;
 let runId = 0;
 
 const mapView = new MapView($('#map'));
@@ -255,6 +263,7 @@ function renderResults() {
   const warnings = result.warnings.map((w) => `<p class="warn">⚠️ ${esc(t(w as Key))}</p>`).join('');
   el.innerHTML = `
     ${stale ? `<p class="warn">↻ ${esc(t('staleHint'))}</p>` : ''}
+    ${fromLink && !stale ? `<p class="note">🔗 ${esc(t('sharedNote'))}</p>` : ''}
     ${warnings}
     <div class="options">${result.options.map(optionCard).join('')}</div>
     <div class="row-actions">
@@ -376,6 +385,8 @@ async function solve() {
     return;
   }
   selected = null;
+  fromLink = false;
+  clearSharedFromUrl();
   setTab('results');
   renderMap(true);
   await run(() => engine.solve(activePeople(), state.settings, progress));
@@ -461,6 +472,34 @@ function copyPlan(e: Evaluation) {
     `https://www.openstreetmap.org/?mlat=${e.candidate.lat.toFixed(6)}&mlon=${e.candidate.lon.toFixed(6)}#map=18/${e.candidate.lat.toFixed(6)}/${e.candidate.lon.toFixed(6)}`,
   ];
   return lines.join('\n');
+}
+
+/** Share link with the inputs and, when up to date, the computed options and routes. */
+async function share(btn: HTMLElement) {
+  const payload: SharedPayload = { v: 2, state: { people: state.people, settings: state.settings } };
+  if (result && !engine.isStale(activePeople(), state.settings)) {
+    const r = result;
+    payload.result = {
+      direct: engine.directDistances,
+      selected,
+      options: r.options.flatMap((o) => {
+        const legs = r.legs.get(o.candidate.id);
+        return legs ? [{ c: o.candidate, p: legs.person.map(packLeg), s: packLeg(legs.shared) }] : [];
+      }),
+    };
+  }
+  const url = await buildShareUrl(payload);
+  log('share', `link with ${payload.result ? `${payload.result.options.length} options` : 'inputs only'}: ${url.length} characters`);
+  // Phones: use the native share sheet (WhatsApp, Signal, …) when available.
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try {
+      await navigator.share({ title: t('plan'), url });
+      return;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+    }
+  }
+  await copyText(url, btn);
 }
 
 async function copyText(text: string, btn?: HTMLElement) {
@@ -706,7 +745,7 @@ resultsTab.addEventListener('click', (e) => {
     return;
   }
   if (btn?.dataset.action === 'share') {
-    if (confirm(t('shareWarn'))) void copyText(shareUrl(state), btn);
+    if (confirm(t('shareWarn'))) void share(btn);
     return;
   }
   if (el.closest('a, summary, details table')) return;
@@ -725,4 +764,38 @@ new ResizeObserver(() => mapView.invalidate()).observe($('#map'));
 
 renderAll();
 renderMap(true);
+void initShared();
+
+/** Open a share link: apply its inputs and, if present, show its pre-computed options. */
+async function initShared() {
+  const data = sharedFromUrl();
+  if (!data) return;
+  const p = await decodePayload(data);
+  if (!p) {
+    logError('share', 'could not read the shared link');
+    return;
+  }
+  // Keep the recipient's own language.
+  state = normalize({ ...p.state, lang: state.lang }, state.lang);
+  save(state);
+  result = null;
+  selected = null;
+  if (p.result?.options.length) {
+    engine.hydrate(
+      activePeople(),
+      state.settings,
+      p.result.direct,
+      p.result.options.map((o) => ({ candidate: o.c, legs: { person: o.p.map(unpackLeg), shared: unpackLeg(o.s) } })),
+    );
+    result = engine.rescore(state.settings);
+    const sel = p.result.selected;
+    selected = sel && result.options.some((o) => o.candidate.id === sel) ? sel : (result.options[0]?.candidate.id ?? null);
+    fromLink = true;
+    tab = 'results';
+  }
+  log('share', `opened link: ${state.people.length} riders, ${result ? result.options.length : 0} pre-computed options`);
+  renderAll();
+  renderMap(true);
+  if (selected) selectOption(selected);
+}
 

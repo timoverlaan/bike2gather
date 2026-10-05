@@ -14,7 +14,12 @@ The interface is in Dutch and English, works on phones, and covers the Netherlan
   ride and detour, and how green the route is. Tap an option to see the routes on the map.
 - **Try my own spot:** tap the map to see how a place you choose scores against the suggestions.
 - **Copy plan** puts a text you can paste into the group chat on your clipboard.
-  **Share link** copies a link with the whole setup (it includes everyone's home location).
+- **Share link** creates a link (`…/#plan=…`) that contains the setup *and* the computed options
+  and routes. Whoever opens it sees the results right away, without searching again or contacting
+  any routing service. Route lines are simplified to ~5 m and compressed, so a typical link is a
+  few kB. The data comes after `#`, so it is never sent to the web server (`?plan=…` also works).
+  It does include everyone's home location, so share it only with your group. On phones it opens
+  the share sheet.
 
 ## Weighing priorities
 

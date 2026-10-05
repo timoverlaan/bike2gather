@@ -563,6 +563,13 @@ input[type='range'] {
   font-size: 0.85rem;
   margin: 0 0 10px;
 }
+.note {
+  background: var(--accent-soft);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin: 0 0 10px;
+}
 .option {
   cursor: pointer;
   border: 2px solid transparent;
