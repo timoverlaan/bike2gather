@@ -71,6 +71,18 @@ and caches results, which is fine for a group of colleagues. For heavy use, poin
 
 ## Development
 
+With [pixi](https://pixi.sh), you don't need Node.js or npm on your system:
+
+```bash
+pixi install      # Node.js (incl. npm) from conda-forge into .pixi/
+pixi run dev      # installs the JS packages on first run, then starts the dev server
+pixi run test     # tests
+pixi run build    # production build into dist/
+pixi run preview  # build + serve the production version
+```
+
+Or with your own Node.js (20.19+):
+
 ```bash
 npm install
 npm run dev       # local dev server

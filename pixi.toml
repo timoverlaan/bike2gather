@@ -1,0 +1,37 @@
+[workspace]
+name = "bike2gather"
+description = "Find the best spot to meet up and cycle to work together"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+nodejs = ">=22,<23"
+
+# The JavaScript packages (Vite, Leaflet, TypeScript) only exist on the npm registry,
+# so `deps` installs them with the npm that ships with nodejs. It only reruns when
+# package.json / package-lock.json change; the other tasks depend on it.
+[tasks.deps]
+cmd = "npm ci --no-audit --no-fund"
+inputs = ["package.json", "package-lock.json"]
+outputs = ["node_modules/.package-lock.json"]
+description = "Install JavaScript dependencies"
+
+[tasks.dev]
+cmd = "npx vite --host"
+depends-on = ["deps"]
+description = "Start the dev server (also reachable from your phone on the same network)"
+
+[tasks.test]
+cmd = "npx vitest run"
+depends-on = ["deps"]
+description = "Run the test suite"
+
+[tasks.build]
+cmd = "npx tsc --noEmit && npx vite build"
+depends-on = ["deps"]
+description = "Type-check and build the static site into dist/"
+
+[tasks.preview]
+cmd = "npx vite preview --host"
+depends-on = ["build"]
+description = "Build and serve the production version locally"
