@@ -58,6 +58,8 @@ export class Engine {
   private greenInFlight = new Set<Leg>();
   /** "Meet where the routes join" variants: derived id → parent candidate and shift. */
   private mergeOf = new Map<string, { parent: string; shiftM: number }>();
+  /** Street points are used even if not allowed, because nothing else was available. */
+  private genericFallback = false;
 
   /** True while greenery is still being fetched in the background. */
   get greenPending() {
@@ -124,8 +126,23 @@ export class Engine {
     t = performance.now();
     const pool = [...pois, ...gridCandidates(area)];
     const limit = Math.min(85, TABLE_LIMIT - 1 - people.length);
-    this.candidates = [...custom, ...prefilter(pool, people, dest, settings, limit - custom.length)];
+    this.genericFallback = false;
+    let picked = prefilter(pool, people, dest, settings, limit - custom.length);
+    if (!picked.length) {
+      // Nothing of the allowed types (e.g. spots failed to load and street corners are
+      // switched off): fall back to plain street points rather than showing nothing.
+      warn('engine', 'no candidates of the allowed spot types; falling back to street points');
+      this.genericFallback = true;
+      this.warnings.push('warnNoSpots');
+      picked = prefilter(pool, people, dest, { ...settings, spotTypes: { ...settings.spotTypes, generic: true } }, limit - custom.length);
+    }
+    this.candidates = [...custom, ...picked];
     log('engine', `prefilter: ${pool.length} → ${this.candidates.length} candidates in ${since(t)}`);
+    if (!this.candidates.length) {
+      warn('engine', 'no candidates at all');
+      progress('done');
+      return { options: [], all: [], legs: this.detailed, warnings: [...this.warnings] };
+    }
 
     // 2. Bicycle distance matrix for all candidates.
     progress('matrix');
@@ -237,7 +254,7 @@ export class Engine {
     for (const c of this.candidates) {
       const d = this.dist.get(c.id);
       if (!d) continue;
-      if (!c.custom && !settings.spotTypes[c.type]) continue;
+      if (!c.custom && !settings.spotTypes[c.type] && !(c.type === 'generic' && this.genericFallback)) continue;
       const measured = this.greenOf(c.id);
       const green = measured ?? { perPerson: this.people.map(() => avgGreen), overall: avgGreen };
       const e = evaluate({ candidate: c, dist: d, direct: this.direct, people: this.people, settings, green });

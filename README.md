@@ -71,7 +71,7 @@ Coordinates are sent only to these free public services:
 | [PDOK Locatieserver](https://www.pdok.nl/introductie/-/article/pdok-locatieserver) | address search / reverse geocoding | Kadaster (Dutch government) |
 | [PDOK BRT-Achtergrondkaart](https://www.pdok.nl/introductie/-/article/basisregistratie-topografie-achtergrondkaarten-brt-a-) | map tiles | Kadaster (Dutch government) |
 | [OSRM bike routing](https://routing.openstreetmap.de/about.html) | distances and routes | FOSSGIS e.V. |
-| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) | meetup spots and greenery | FOSSGIS e.V. (fallback: private.coffee) |
+| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) | meetup spots and greenery | FOSSGIS e.V. (fallbacks when busy: Kumi Systems, private.coffee) |
 
 The public routing and Overpass servers are meant for light use. The app throttles its requests
 and caches results, which is fine for a group of colleagues. For heavy use, point

@@ -194,6 +194,32 @@ describe('Engine', () => {
     expect(haversine(r.options[0].candidate, J)).toBeLessThan(60);
   }, 30000);
 
+  it('still suggests spots when Overpass is busy and street corners are switched off', async () => {
+    const base = fakeFetch(calls);
+    const hosts: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('interpreter')) {
+          hosts.push(new URL(url).host);
+          return new Response('busy', { status: 504, statusText: 'Gateway Timeout' });
+        }
+        return base(input, init);
+      }),
+    );
+    const state = defaultState('en');
+    state.settings.destination = { lat: 52.1, lon: 5.08, label: 'Work' };
+    state.settings.spotTypes.generic = false;
+    const r = await new Engine().solve(people, state.settings, () => {});
+    // Every Overpass server was tried for the spots query.
+    expect(new Set(hosts).size).toBe(3);
+    expect(r.warnings).toEqual(expect.arrayContaining(['warnPois', 'warnNoSpots']));
+    expect(r.options.length).toBeGreaterThan(0);
+    // No distance-matrix request with an empty candidate list.
+    expect(calls.filter((c) => c.includes('/table/')).every((c) => !c.endsWith('driving/'))).toBe(true);
+  }, 30000);
+
   it('evaluates a custom spot', async () => {
     const state = defaultState('en');
     state.settings.destination = { lat: 52.1, lon: 5.08, label: 'Work' };

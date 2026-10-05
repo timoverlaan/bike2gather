@@ -283,6 +283,7 @@ function renderResults() {
     ${stale ? `<p class="warn">↻ ${esc(t('staleHint'))}</p>` : ''}
     ${fromLink && !stale ? `<p class="note">🔗 ${esc(t('sharedNote'))}</p>` : ''}
     ${warnings}
+    ${result.options.length ? '' : `<p class="empty">${esc(t('noOptions'))}</p>`}
     <div class="options">${result.options.map(optionCard).join('')}</div>
     <div class="row-actions">
       <button class="secondary" data-action="try-own" ${stale ? 'disabled' : ''}>📍 ${esc(t('tryOwn'))}</button>
