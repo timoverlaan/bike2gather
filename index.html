@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Find the best place to meet up and cycle to work together." />
+    <meta name="theme-color" content="#1f6f43" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <title>Bike2Gather</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="./favicon.svg" alt="" width="28" height="28" />
+        <div>
+          <h1 data-i18n="appTitle">Bike2Gather</h1>
+          <p class="tagline" data-i18n="tagline"></p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="ghost small" id="privacy-btn" data-i18n="privacy"></button>
+        <div class="seg lang" role="group" aria-label="Language">
+          <button data-lang="nl">NL</button>
+          <button data-lang="en">EN</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="map-wrap">
+        <div id="map" aria-label="Map"></div>
+        <div id="pick-banner" class="pick-banner" hidden>
+          <span id="pick-text"></span>
+          <button class="small" id="pick-cancel" data-i18n="cancel"></button>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-scroll">
+          <div class="seg mode" role="group">
+            <button data-mode="morning"><span aria-hidden="true">☀️</span> <span data-i18n="morning"></span></button>
+            <button data-mode="evening"><span aria-hidden="true">🌙</span> <span data-i18n="evening"></span></button>
+          </div>
+          <p class="hint" id="mode-hint"></p>
+
+          <nav class="tabs" role="tablist">
+            <button role="tab" data-tab="route" data-i18n="tabRoute"></button>
+            <button role="tab" data-tab="priorities" data-i18n="tabPriorities"></button>
+            <button role="tab" data-tab="results"><span data-i18n="tabResults"></span><span class="badge" id="results-badge" hidden></span></button>
+          </nav>
+
+          <section class="tab" id="tab-route" role="tabpanel"></section>
+          <section class="tab" id="tab-priorities" role="tabpanel"></section>
+          <section class="tab" id="tab-results" role="tabpanel"></section>
+        </div>
+
+        <div class="action-bar">
+          <div id="status" class="status" aria-live="polite"></div>
+          <button class="primary" id="solve-btn"></button>
+        </div>
+      </aside>
+    </main>
+
+    <dialog id="privacy-dialog">
+      <h2 data-i18n="privacy"></h2>
+      <p data-i18n="privacyText"></p>
+      <form method="dialog"><button class="primary">OK</button></form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
