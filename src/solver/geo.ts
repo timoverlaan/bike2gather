@@ -129,3 +129,41 @@ export function pointInRing(p: [number, number], ring: [number, number][]): bool
   }
   return inside;
 }
+
+/**
+ * Split a [lat, lon] polyline at `dist` metres from its start into
+ * [start → split point, split point → end].
+ */
+export function splitLine(coords: [number, number][], dist: number): [[number, number][], [number, number][]] {
+  if (coords.length < 2 || dist <= 0) return [[coords[0]], coords.slice()];
+  let acc = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1];
+    const b = coords[i];
+    const seg = haversine({ lat: a[0], lon: a[1] }, { lat: b[0], lon: b[1] });
+    if (acc + seg >= dist) {
+      const t = seg === 0 ? 0 : (dist - acc) / seg;
+      const p: [number, number] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      return [[...coords.slice(0, i), p], [p, ...coords.slice(i)]];
+    }
+    acc += seg;
+  }
+  return [coords.slice(), [coords[coords.length - 1]]];
+}
+
+/**
+ * Length (metres) of the stretch that all lines share, measured from their common
+ * first point: walks along every line in `step` increments and stops as soon as
+ * one of them is more than `tolerance` away from the first line.
+ */
+export function commonPrefixLength(lines: [number, number][][], step = 10, tolerance = 15): number {
+  if (lines.length < 2) return 0;
+  const samples = lines.map((l) => samplePolyline(l, step));
+  const n = Math.min(...samples.map((s) => s.length));
+  let i = 1;
+  for (; i < n; i++) {
+    const ref = { lat: samples[0][i][0], lon: samples[0][i][1] };
+    if (samples.some((s) => haversine(ref, { lat: s[i][0], lon: s[i][1] }) > tolerance)) break;
+  }
+  return (i - 1) * step;
+}

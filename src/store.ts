@@ -8,7 +8,7 @@ export interface AppState {
 }
 
 export const PRESETS: Record<string, Weights> = {
-  presetBalanced: { fairness: 0.5, together: 0.4, spot: 0.5, green: 0.4, fitness: 0.5 },
+  presetBalanced: { fairness: 0.5, together: 0.5, spot: 0.5, green: 0.4, fitness: 0.5 },
   presetFair: { fairness: 1, together: 0.2, spot: 0.3, green: 0.2, fitness: 0.3 },
   presetEfficient: { fairness: 0, together: 0.1, spot: 0.2, green: 0, fitness: 0.5 },
   presetSocial: { fairness: 0.4, together: 1, spot: 0.4, green: 0.3, fitness: 0.8 },

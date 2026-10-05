@@ -67,3 +67,8 @@ export function route(from: LatLon, to: LatLon): Promise<Route> {
   }
   return p;
 }
+
+/** For tests: forget cached routes. */
+export function clearRouteCache() {
+  routeCache.clear();
+}

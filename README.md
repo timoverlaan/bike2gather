@@ -52,7 +52,10 @@ Moving a slider re-ranks immediately from cached data. Only new top options trig
    candidate, and from every candidate to the destination.
 4. **Detail:** the top options (kept at least 250 m apart) get full bicycle routes. Greenery is then
    measured by sampling each route every 40 m against OSM green and blue features near it.
-5. **Re-rank** with the real greenery, then repeat until the top list is stable.
+5. **Meet where the routes join:** if everyone's routes to an option already run along the same
+   road before reaching it, a variant at the junction is added (same distance, more km together).
+   It is computed from the routes already fetched, so it costs no extra requests.
+6. **Re-rank** with the real greenery, then repeat until the top list is stable.
 
 If a service is busy, the app falls back gracefully: estimates instead of the matrix, street points
 when spots can't be loaded, and no greenery bonus when it can't be measured. It shows a warning when

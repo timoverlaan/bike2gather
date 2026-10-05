@@ -107,6 +107,11 @@ const en = {
   openMaps: 'Open in maps',
   share: 'Share link',
   shareWarn: 'The link contains everyone\'s home locations and the planned routes. Only share it with your group.',
+  shareMsgMorning:
+    '🚲 I found the perfect place for us to meet up and cycle to work together: {place}, at {time}. See the routes and when to leave in Bike2Gather:',
+  shareMsgEvening:
+    '🚲 I planned our ride home together: we cycle together to {place} (around {time}) and split up there. See the routes in Bike2Gather:',
+  shareMsgPlain: '🚲 Shall we cycle together? Open our plan in Bike2Gather:',
   sharedNote: 'Opened from a shared link. Press the button below to recalculate with live data.',
   reset: 'Reset',
   resetConfirm: 'Remove all riders and settings?',
@@ -239,6 +244,11 @@ const nl: Record<Key, string> = {
   openMaps: 'Open in kaarten',
   share: 'Deel link',
   shareWarn: 'De link bevat ieders thuislocatie en de geplande routes. Deel hem alleen met je groep.',
+  shareMsgMorning:
+    '🚲 Ik heb de perfecte plek gevonden om af te spreken en samen naar het werk te fietsen: {place}, om {time}. Bekijk de routes en hoe laat je moet vertrekken in Bike2Gather:',
+  shareMsgEvening:
+    '🚲 Ik heb onze rit naar huis gepland: we fietsen samen tot {place} (rond {time}) en gaan daar ieder ons eigen weg. Bekijk de routes in Bike2Gather:',
+  shareMsgPlain: '🚲 Zullen we samen fietsen? Open ons plan in Bike2Gather:',
   sharedNote: 'Geopend via een gedeelde link. Druk op de knop hieronder om opnieuw te berekenen met actuele gegevens.',
   reset: 'Wissen',
   resetConfirm: 'Alle fietsers en instellingen verwijderen?',

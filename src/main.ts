@@ -490,16 +490,26 @@ async function share(btn: HTMLElement) {
   }
   const url = await buildShareUrl(payload);
   log('share', `link with ${payload.result ? `${payload.result.options.length} options` : 'inputs only'}: ${url.length} characters`);
-  // Phones: use the native share sheet (WhatsApp, Signal, …) when available.
+  // A ready-to-send message; the link goes inside the text because share targets
+  // treat a separate `url` inconsistently (WhatsApp on Android appends it, some drop it).
+  const opt = payload.result && result?.options.find((o) => o.candidate.id === selected);
+  const msg = opt
+    ? t(state.settings.mode === 'morning' ? 'shareMsgMorning' : 'shareMsgEvening', {
+        place: opt.candidate.name ?? t(`spot_${opt.candidate.type}` as Key),
+        time: formatTime(opt.meetTime),
+      })
+    : t('shareMsgPlain');
+  const text = `${msg}\n${url}`;
+  // Phones: the native share sheet (WhatsApp, Signal, …); elsewhere: copy the message.
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {
     try {
-      await navigator.share({ title: t('plan'), url });
+      await navigator.share({ title: t('appTitle'), text });
       return;
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
     }
   }
-  await copyText(url, btn);
+  await copyText(text, btn);
 }
 
 async function copyText(text: string, btn?: HTMLElement) {

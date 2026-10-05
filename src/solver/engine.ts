@@ -12,7 +12,7 @@ import {
   searchArea,
   type OsmElement,
 } from './candidates';
-import { haversine } from './geo';
+import { commonPrefixLength, haversine, lineLength, splitLine } from './geo';
 import { greenFraction, greenQuery, parseGreen } from './greenery';
 import { evaluate, pickDiverse } from './scoring';
 import { log, warn } from '../log';
@@ -56,6 +56,8 @@ export class Engine {
   /** Called when greenery that arrived after the results were shown is ready (re-rank). */
   onBackgroundUpdate: (() => void) | null = null;
   private greenInFlight = new Set<Leg>();
+  /** "Meet where the routes join" variants: derived id → parent candidate and shift. */
+  private mergeOf = new Map<string, { parent: string; shiftM: number }>();
 
   /** True while greenery is still being fetched in the background. */
   get greenPending() {
@@ -93,6 +95,7 @@ export class Engine {
     this.problemKey = newKey;
     this.dist.clear();
     this.detailed.clear();
+    this.mergeOf.clear();
 
     log('engine', 'solve start', { mode: settings.mode, riders: people.length, options: settings.options, weights: settings.weights });
 
@@ -249,6 +252,7 @@ export class Engine {
   }
 
   private greenOf(id: string): { perPerson: number[]; overall: number } | null {
+    if (this.mergeOf.has(id)) this.fillMergeGreen(id);
     const legs = this.detailed.get(id);
     if (!legs || legs.shared.green == null || legs.person.some((l) => l.green == null)) return null;
     const perPerson = legs.person.map((l) => {
@@ -289,6 +293,7 @@ export class Engine {
             shared: shared.distance,
             estimated: false,
           });
+          this.addMergeVariant(c, person, shared);
         } catch (e) {
           warn('engine', `routing failed for ${c.id}, dropping it`, e);
           this.dist.delete(c.id); // can't route there – drop it
@@ -322,6 +327,56 @@ export class Engine {
       warn('engine', `greenery not ready after ${this.greenWaitMs}ms; showing results now, will re-rank when it arrives`);
       void task.then(() => this.onBackgroundUpdate?.());
     }
+  }
+
+  /**
+   * If all riders' routes already run together for a while before reaching candidate `c`,
+   * add a variant that meets where the routes join: same distance for everyone, more
+   * kilometres together. Derived from the routes we already have; no extra requests.
+   */
+  private addMergeVariant(c: Candidate, person: Leg[], shared: Leg) {
+    if (c.custom || person.length < 2 || this.mergeOf.has(c.id)) return;
+    const morning = this.mode === 'morning';
+    // Orient every personal leg so it starts at the meetup point.
+    const fromMeet = person.map((l) => (morning ? [...l.coords].reverse() : l.coords));
+    const d = commonPrefixLength(fromMeet);
+    if (d < 80) return;
+
+    const parts = fromMeet.map((coords) => splitLine(coords, d)); // [meet → join, join → home]
+    // Routed distance per metre of geometry (geometry is slightly shorter than the routed distance).
+    const scale = person.map((l) => l.distance / Math.max(1, lineLength(l.coords)) || 1);
+    const togetherPart = parts[0][0]; // meet → join, along rider 0's route
+    const join = togetherPart[togetherPart.length - 1];
+    const id = `${c.id}~join`;
+    const newPerson: Leg[] = person.map((l, i) => ({
+      distance: Math.max(0, l.distance - d * scale[i]),
+      coords: morning ? [...parts[i][1]].reverse() : parts[i][1],
+      green: null,
+    }));
+    const newShared: Leg = {
+      distance: shared.distance + d * scale[0],
+      coords: morning
+        ? [...[...togetherPart].reverse(), ...shared.coords.slice(1)]
+        : [...shared.coords, ...togetherPart.slice(1)],
+      green: null,
+    };
+    this.candidates.push({ id, lat: join[0], lon: join[1], type: 'generic', name: null });
+    this.detailed.set(id, { person: newPerson, shared: newShared });
+    this.dist.set(id, { personLeg: newPerson.map((l) => l.distance), shared: newShared.distance, estimated: false });
+    this.mergeOf.set(id, { parent: c.id, shiftM: d * scale[0] });
+    log('engine', `routes to ${c.name ?? c.id} already join ${Math.round(d)} m earlier; added a variant there`);
+  }
+
+  /** Greenery of a join variant follows from its parent's measured legs. */
+  private fillMergeGreen(id: string) {
+    const m = this.mergeOf.get(id);
+    const legs = this.detailed.get(id);
+    const parent = m && this.detailed.get(m.parent);
+    if (!m || !legs || !parent || parent.shared.green == null || parent.person.some((l) => l.green == null)) return;
+    legs.person.forEach((l, i) => (l.green = parent.person[i].green));
+    legs.shared.green =
+      (parent.person[0].green! * m.shiftM + parent.shared.green * parent.shared.distance) /
+      Math.max(1, m.shiftM + parent.shared.distance);
   }
 
   private async computeGreen(legs: Leg[], dest: LatLon) {
@@ -397,6 +452,7 @@ export class Engine {
     this.candidates = options.map((o) => o.candidate);
     this.dist.clear();
     this.detailed.clear();
+    this.mergeOf.clear();
     for (const { candidate: c, legs } of options) {
       this.detailed.set(c.id, legs);
       this.dist.set(c.id, { personLeg: legs.person.map((l) => l.distance), shared: legs.shared.distance, estimated: false });

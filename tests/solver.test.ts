@@ -231,3 +231,32 @@ describe('store & i18n', () => {
     }
   });
 });
+
+describe('route joining', () => {
+  it('splitLine cuts at the given distance', async () => {
+    const { splitLine } = await import('../src/solver/geo');
+    const line: [number, number][] = [
+      [52, 5],
+      [52, 5.01],
+    ];
+    const [a, b] = splitLine(line, lineLength(line) / 2);
+    expect(lineLength(a)).toBeCloseTo(lineLength(line) / 2, 0);
+    expect(lineLength(b)).toBeCloseTo(lineLength(line) / 2, 0);
+    expect(a[a.length - 1]).toEqual(b[0]);
+  });
+
+  it('commonPrefixLength finds where routes diverge', async () => {
+    const { commonPrefixLength } = await import('../src/solver/geo');
+    // Both start at (52, 5), share ~340 m eastward, then split north/south.
+    const shared: [number, number][] = [
+      [52, 5],
+      [52, 5.005],
+    ];
+    const north: [number, number][] = [...shared, [52.005, 5.005]];
+    const south: [number, number][] = [...shared, [51.995, 5.005]];
+    const d = commonPrefixLength([north, south]);
+    expect(d).toBeGreaterThan(300);
+    expect(d).toBeLessThan(380);
+    expect(commonPrefixLength([north, [[52, 5], [52.005, 5]]])).toBeLessThan(30);
+  });
+});

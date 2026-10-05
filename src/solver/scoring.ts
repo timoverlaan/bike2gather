@@ -21,7 +21,7 @@ import { SPOT_QUALITY } from '../types';
  * wᵢ is a per-person multiplier: fitter riders get a smaller weight, so the
  * optimiser is happier to give them the longer detour.
  */
-export const TOGETHER_KM = 3;
+export const TOGETHER_KM = 8;
 export const SPOT_KM = 1.5;
 export const GREEN_KM = 3;
 /** Penalty per km above someone's personal maximum detour. */
@@ -102,7 +102,7 @@ export function evaluate(input: ScoreInput): Evaluation {
   const effort = (1 - w.fairness) * mean + w.fairness * max;
 
   const meanDirectKm = Math.max(0.5, results.reduce((a, r) => a + r.directKm, 0) / Math.max(1, results.length));
-  const togetherBonus = TOGETHER_KM * w.together * Math.min(1.2, sharedKm / meanDirectKm);
+  const togetherBonus = TOGETHER_KM * w.together * Math.min(1, sharedKm / meanDirectKm);
   const spotBonus = SPOT_KM * w.spot * SPOT_QUALITY[candidate.type];
   const greenFrac = input.green ? input.green.overall : null;
   const greenBonus = greenFrac == null ? 0 : GREEN_KM * w.green * greenFrac;

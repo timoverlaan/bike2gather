@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Engine } from '../src/solver/engine';
+import { clearRouteCache } from '../src/services/osrm';
 import { haversine } from '../src/solver/geo';
 import { defaultState } from '../src/store';
 import type { LatLon, Person } from '../src/types';
@@ -71,6 +72,7 @@ describe('Engine', () => {
   let calls: string[];
   beforeEach(() => {
     calls = [];
+    clearRouteCache();
     vi.stubGlobal('fetch', fakeFetch(calls));
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -163,6 +165,34 @@ describe('Engine', () => {
     expect(engine.greenPending).toBe(false);
     expect(engine.rescore(state.settings).options.every((o) => o.green != null)).toBe(true);
   });
+
+  it('adds a "meet where the routes join" variant when routes already overlap', async () => {
+    // Routes that run via a common junction J before reaching any meetup point.
+    const J = { lat: 52.07, lon: 5.08 };
+    const base = fakeFetch(calls);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.includes('/route/v1/')) return base(input, init);
+        const [a, b] = parsePts(/driving\/([^?]+)/.exec(url)![1]);
+        const isHome = people.some((p) => Math.abs(p.home!.lat - a.lat) < 1e-6 && Math.abs(p.home!.lon - a.lon) < 1e-6);
+        const coords = isHome ? [[a.lon, a.lat], [J.lon, J.lat], [b.lon, b.lat]] : [[a.lon, a.lat], [b.lon, b.lat]];
+        let d = 0;
+        for (let i = 1; i < coords.length; i++)
+          d += haversine({ lat: coords[i - 1][1], lon: coords[i - 1][0] }, { lat: coords[i][1], lon: coords[i][0] });
+        return new Response(JSON.stringify({ code: 'Ok', routes: [{ distance: d, duration: 0, geometry: { coordinates: coords } }] }));
+      }),
+    );
+    const state = defaultState('en');
+    state.settings.destination = { lat: 52.1, lon: 5.08, label: 'Work' };
+    state.settings.weights = { fairness: 0.5, together: 1, spot: 0, green: 0, fitness: 0 };
+    const r = await new Engine().solve(people, state.settings, () => {});
+    const join = r.all.filter((e) => e.candidate.id.endsWith('~join'));
+    expect(join.length).toBeGreaterThan(0);
+    // The best option should be (close to) the junction, where both routes come together.
+    expect(haversine(r.options[0].candidate, J)).toBeLessThan(60);
+  }, 30000);
 
   it('evaluates a custom spot', async () => {
     const state = defaultState('en');
